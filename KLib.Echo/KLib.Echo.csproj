@@ -22,7 +22,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\KLibCore\KLibCore.csproj" />
-    <ProjectReference Include="..\KLibHttp\KLibHttp.csproj" />
+    <ProjectReference Include="..\KLibHTTP\KLibHTTP.csproj" />
     <ProjectReference Include="..\KLibLog\KLibLog.csproj" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

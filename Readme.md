@@ -9,6 +9,9 @@ a cross-platform (using .net core) network library for creating client/server ea
 
 ### Changelog
 
+#### 2016-12-21
+1. update csproj for dotnet cli 1.0.0-preview4-004233 but still cannot build by cli tools.[relative Github issues](https://github.com/Microsoft/dotnet/issues/340)
+
 #### 2016-12-17
 1. Rewrite KLib.Core
 2. Add AsynCore using Async Socket API
