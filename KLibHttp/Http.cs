@@ -105,7 +105,7 @@ namespace KLib.HTTP
         public static void Init()
         {
             HTTPOp protocolInstance = new HTTPOp();
-            Core newCore = new AsynCore();
+            Core newCore = new UniAsynCore();
             newCore.SetClient(protocolInstance, false);
             protocolInstance.BindCore(newCore);
             currentCore = newCore;
@@ -144,7 +144,7 @@ namespace KLib.HTTP
             request.SetUrl(path.PathAndQuery,path.Host);
             return Request(request);
         }
-        override public object Received(byte[] data, Socket socket, out SocketException err, object Addition)
+        override public object Received(byte[] data, UniNetObject connection, out NetCore.Error.NetCoreException err, object Addition)
         {
             err = null;
             var state = ProcessHTTPResponse(data, Addition as HTTPStateObject,out var nextRequest);
@@ -152,11 +152,11 @@ namespace KLib.HTTP
             {
                 (state as HTTPStateObject).request = nextRequest;
                 log("send:" + nextRequest.Host, INFO, "HTTP.Received");
-                Write(nextRequest.ToByte(), socket, out err);
+                connection.Write(nextRequest.ToByte(), out err);
             }
             return state;
         }
-        public override void Aborted(Socket socket, object Addition)
+        public override void Aborted(UniNetObject connection, object Addition)
         {
             HTTPStateObject state = Addition as HTTPStateObject;
             if (state.request.Done == false)
@@ -174,14 +174,14 @@ namespace KLib.HTTP
             }
             return state.request.Callback(response);
         }
-        override public object Connected(Socket socket, out SocketException err)
+        override public object Connected(UniNetObject connection, out NetCore.Error.NetCoreException err)
         {
             err = null;
             HTTPRequest request=null;
             if (ConnectedRequest != null)
             {
                 request = ConnectedRequest;
-                Write(ConnectedRequest.ToByte(), socket, out err);
+                connection.Write(ConnectedRequest.ToByte(), out err);
                 ConnectedRequest = null;
             }
             lock (newConnectLock)

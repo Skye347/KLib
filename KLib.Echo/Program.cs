@@ -12,11 +12,11 @@ class Program
     static void Main(string[] args)
     {
         Log.displayTime = true;
-        HTTPOp.Init();
-        //EchoProtocolCallback.StartEchoServer("127.0.0.1", 1010);
-        //EchoProtocolCallback.StartEchoClient("127.0.0.1", 1010,"a hi",false);
-        //EchoProtocolCallback.StartEchoClient("127.0.0.1", 1010, "b hi",false);
-        HTTPOp.Request(HTTPMethod.POST, "http://httpbin.org/post",null, RequestCallback);
+        //HTTPOp.Init();
+        EchoProtocolCallback.StartEchoServer("127.0.0.1", 1010);
+        //EchoProtocolCallback.StartEchoClient("127.0.0.1", 55056, "a hi", false);
+        //EchoProtocolCallback.StartEchoClient("127.0.0.1", 1010, "b hi", false);
+        //HTTPOp.Request(HTTPMethod.GET, "http://www.oschina.net/",null, RequestCallback);
         System.Console.ReadLine();
     }
 
@@ -45,26 +45,26 @@ public class EchoProtocolCallback : KLib.NetCore.Callback.CallbackCollection
     public string data;
     public bool displayReceive=true;
     int Count = 0;
-    override public object Received(byte[] data, Socket socket, out SocketException err, object Addition = null)
+    override public object Received(byte[] data, UniNetObject connection, out KLib.NetCore.Error.NetCoreException err, object Addition = null)
     {
         if (displayReceive)
         {
-            Console.WriteLine(Count.ToString() + ":" + Encoding.ASCII.GetString(data));
+            Log.log(Count.ToString() + ":" + Encoding.ASCII.GetString(data),Log.INFO,"EchoReceived");
         }
         Count++;
-        Write(data, socket, out err);
+        connection.Write(data, out err);
         return null;
     }
-    override public object Connected(Socket socket, out SocketException err)
+    override public object Connected(UniNetObject connection, out KLib.NetCore.Error.NetCoreException err)
     {
-        Write(Encoding.ASCII.GetBytes(data), socket, out err);
+        connection.Write(Encoding.ASCII.GetBytes(data), out err);
         return null;
     }
     public static void StartEchoServer(String ip, int port)
     {
         EchoProtocolCallback EchoCallback = new EchoProtocolCallback();
-        EchoCallback.UseTcp();
-        Core EchoServerCore = new AsynCore();
+        EchoCallback.UseUdp();
+        Core EchoServerCore = new UniAsynCore();
         EchoServerCore.SetServer(ip, port, EchoCallback,10);
         EchoServerCore.StartListen();
         EchoServerCore.Run();
@@ -75,8 +75,8 @@ public class EchoProtocolCallback : KLib.NetCore.Callback.CallbackCollection
         EchoProtocolCallback EchoCallback = new EchoProtocolCallback();
         EchoCallback.data = data;
         EchoCallback.displayReceive = displayReceive;
-        EchoCallback.UseTcp();
-        Core EchoClientCore = new AsynCore();
+        EchoCallback.UseUdp();
+        Core EchoClientCore = new UniAsynCore();
         EchoClientCore.SetClient(EchoCallback, true);
         EchoClientCore.Connect(ip, port);
         EchoClientCore.Run();
