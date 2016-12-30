@@ -4,7 +4,7 @@
     <RootNamespace>KLib.Core</RootNamespace>
   </PropertyGroup>
   <PropertyGroup>
-    <TargetFramework>netstandard1.4</TargetFramework>
+    <TargetFramework>netstandard1.6</TargetFramework>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <OutputType>library</OutputType>
@@ -14,11 +14,17 @@
     <EmbeddedResource Include="**\*.resx" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Remove="NetCore\Core\AsynCore.cs" />
+    <Compile Remove="NetCore\Core\SimpleCore.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="NETStandard.Library" Version="1.6" />
     <PackageReference Include="System.Net.NameResolution" Version="4.3.0" />
+    <PackageReference Include="System.Net.Security" Version="4.3.0" />
     <PackageReference Include="System.Threading.Thread" Version="4.3.0" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\KLib.MemHper\KLib.MemHper.csproj" />
     <ProjectReference Include="..\KLibLog\KLibLog.csproj" />
   </ItemGroup>
 </Project>

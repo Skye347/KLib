@@ -17,6 +17,12 @@ namespace KLib.NetCore.Callback{
             _ProtocolOp = new ProtocolOpTcp();
             isInstalled = true;
         }
+
+	    public void UseUdp()
+	    {
+            _ProtocolOp = new ProtocolOpUdp();
+            isInstalled = true;
+        }
         public void UseCustom(ProtocolOpBase Protocal){
             _ProtocolOp = Protocal;
             isInstalled = true;
@@ -27,11 +33,11 @@ namespace KLib.NetCore.Callback{
         public void StopCore(){
             currentCore.Stop();
         }
-        virtual public object Received(byte[] data,Socket socket,out SocketException err,object Addition=null){
+        virtual public object Received(byte[] data,UniNetObject connection,out NetCore.Error.NetCoreException err,object Addition=null){
             err = null;
             return null;
         }
-        virtual public void Aborted(Socket socket,object Addition)
+        virtual public void Aborted(UniNetObject connection, object Addition)
         {
 
         }
@@ -54,14 +60,14 @@ namespace KLib.NetCore.Callback{
         //    ((CoreThreadPassObj)Param).socket.Dispose();
         //    ((CoreThreadPassObj)Param).socket = null;
         //}
-        virtual public void Write(Byte[] data,Socket socket,out SocketException err){
-            _ProtocolOp.Write(data, socket, out err);
-        }
-        virtual public object Connected(Socket socket,out SocketException err){
+        //virtual public void Write(Byte[] data, UniNetObject connection, out NetCore.Error.NetCoreException err){
+        //    _ProtocolOp.Write(data, connection, out err);
+        //}
+        virtual public object Connected(UniNetObject connection, out NetCore.Error.NetCoreException err){
             err = null;
             return null;
         }
-        virtual public void Accepted(Socket socket,out SocketException err)
+        virtual public void Accepted(UniNetObject connection, out NetCore.Error.NetCoreException err)
         {
             err = null;
         }

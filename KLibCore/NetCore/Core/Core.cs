@@ -64,4 +64,83 @@ namespace KLib.NetCore
             }
         }
     }
+
+    public enum UniNetOperation
+    {
+        Accept,
+        Connect,
+        Receive
+    }
+
+    public class UniNetObject : IDisposable
+    {
+        public int ConnectionType;
+        public UniNetOperation LastOperation;
+        public NetCore.Error.NetCoreError ObjectError;
+        public byte[] remainData;
+        public object innerObject;
+        public object stateObject;
+        private ProtocolOpBase protocol;
+        public IPEndPoint ipEndPoint;
+        public Action<UniNetObject> IOCompletedMethod;
+        internal void ConnectAsync()
+        {
+            LastOperation = UniNetOperation.Connect;
+            protocol.ConnectAsync(this, ipEndPoint.Address, ipEndPoint.Port);
+        }
+
+        internal void SetProtocol(ProtocolOpBase protocolOp)
+        {
+            protocol = protocolOp;
+            innerObject = protocol.GetAsyncObject();
+            protocol.AttachUniAsyncObject(innerObject, this);
+        }
+
+        internal void SetRemoteEndPoint(IPEndPoint iPEndPoint)
+        {
+            this.ipEndPoint = iPEndPoint;
+        }
+
+        internal void SetCompletedHandler(Action<UniNetObject> processIO)
+        {
+            protocol.SetAsyncCompleted(processIO, innerObject);
+            IOCompletedMethod = processIO;
+        }
+
+        internal byte[] ReceiveAll()
+        {
+            NetCore.Error.NetCoreError err;
+            var data = protocol.Receive(this, out err);
+            if (err != Error.NetCoreError.Success)
+            {
+                log("NetCoreError", ERROR, "UniAsynCore.ReceiveAll");
+            }
+            return data;
+        }
+
+        internal bool ReceiveAsync(UniNetObject uniObject)
+        {
+            return protocol.ReceiveAsync(this);
+        }
+
+        public void Dispose()
+        {
+            protocol.DisposeAsyncObject(this);
+        }
+
+        internal bool AcceptAsync(UniNetObject uniObject)
+        {
+            return protocol.AcceptAsync(this, uniObject);
+        }
+
+        public void SetBuffer(byte[] buf, int a, int b)
+        {
+            protocol.SetBuffer(this, buf, a, b);
+        }
+
+        public void Write(byte[] buf,out NetCore.Error.NetCoreException err)
+        {
+            protocol.Write(buf, this, out err);
+        }
+    }
 }

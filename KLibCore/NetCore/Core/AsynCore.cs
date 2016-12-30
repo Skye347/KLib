@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Collections.Generic;
 using KLib.NetCore.Callback;
+using KLib.MemHper;
 using KLib.NetCore.Protocol;
 using static KLib.Log.Log;
 using System.Threading;
@@ -16,7 +17,7 @@ namespace KLib.NetCore
         private SocketAsyncPool _ConnectPool;
         private Socket _ServerSocket;
         private CoreType _Type;
-        private BufferManager _BufferManager;
+        private KLib.MemHper.Buffer _BufferManager;
         public override bool Connect(string ip, int port, bool GoAsync = true)
         {
             if (_SingleConnect && _ServerSocket != null)
@@ -107,7 +108,7 @@ namespace KLib.NetCore
         //[MethodImpl(MethodImplOptions.NoOptimization | MethodImplOptions.NoInlining)]
         private void ProcessConnected(SocketAsyncEventArgs connectionArgs)
         {
-            SocketException err;
+            NetCore.Error.NetCoreException err;
             var state=_Callback.Connected(connectionArgs.ConnectSocket, out err);
             if (err != null)
             {
@@ -115,7 +116,7 @@ namespace KLib.NetCore
                 return;
             }
             connectionArgs.UserToken = new SocketStateObject(connectionArgs.ConnectSocket,state);
-            connectionArgs.SetBuffer(new Byte[4096], 0, 4096);
+            _BufferManager.SetBuffer(connectionArgs.SetBuffer, 4096);
             if (!connectionArgs.ConnectSocket.ReceiveAsync(connectionArgs))
             {
                 ProcessReceive(connectionArgs);
@@ -154,7 +155,6 @@ namespace KLib.NetCore
             byte[] buffer = new byte[connectionArgs.BytesTransferred];
             Socket clientSocket = (connectionArgs.UserToken as SocketStateObject).socket;
             Array.Copy(connectionArgs.Buffer, buffer, connectionArgs.BytesTransferred);
-            connectionArgs.Buffer[0] = 0;
             SocketException err;
             var State = _Callback.Received(buffer, clientSocket, out err, (connectionArgs.UserToken as SocketStateObject).state);
             if (err != null)
@@ -196,20 +196,23 @@ namespace KLib.NetCore
             _Type = CoreType.Client;
             _Callback = callbackCollection;
             _SingleConnect = SingleConnect;
+            _BufferManager = new SimpleBuffer();
+            //_BufferManager = new MicrosoftBuffer(4096 * 3, 4096);
+            
         }
 
         public override void SetServer(string ip, int port, CallbackCollection callbackCollection, int MAX_LISTEN)
         {
-            _BufferManager = new BufferManager(4096 * _MAX_LISTEN*2, 4096);
-            _BufferManager.InitBuffer();
+            _BufferManager = new SimpleBuffer();
+            //_BufferManager = new MicrosoftBuffer(4096 * 10, 4096);
             _ConnectPool = new SocketAsyncPool();
             _ConnectPool.Init(MAX_LISTEN);
             for(int i = 0; i < MAX_LISTEN; i++)
             {
                 SocketAsyncEventArgs args = new SocketAsyncEventArgs();
                 args.Completed += new EventHandler<SocketAsyncEventArgs>(ProcessIO);
-                byte[] buf = new byte[4096];
-                args.SetBuffer(buf, 0, 4096);
+                //byte[] buf = new byte[4096];
+                _BufferManager.SetBuffer(args.SetBuffer, 4096);
                 _ConnectPool.InitPush(args);
             }
             _IpAddress = ip != null?
@@ -297,62 +300,5 @@ namespace KLib.NetCore
                 _pool.Push(args);
             }
         }
-    }
-
-    class BufferManager
-    {
-        int m_numBytes;                 // the total number of bytes controlled by the buffer pool
-        byte[] m_buffer;                // the underlying byte array maintained by the Buffer Manager
-        Stack<int> m_freeIndexPool;     // 
-        int m_currentIndex;
-        int m_bufferSize;
-
-        public BufferManager(int totalBytes, int bufferSize)
-        {
-            m_numBytes = totalBytes;
-            m_currentIndex = 0;
-            m_bufferSize = bufferSize;
-            m_freeIndexPool = new Stack<int>();
-        }
-
-        // Allocates buffer space used by the buffer pool
-        public void InitBuffer()
-        {
-            // create one big large buffer and divide that 
-            // out to each SocketAsyncEventArg object
-            m_buffer = new byte[m_numBytes];
-        }
-
-        // Assigns a buffer from the buffer pool to the 
-        // specified SocketAsyncEventArgs object
-        //
-        // <returns>true if the buffer was successfully set, else false</returns>
-        public bool SetBuffer(SocketAsyncEventArgs args)
-        {
-
-            if (m_freeIndexPool.Count > 0)
-            {
-                args.SetBuffer(m_buffer, m_freeIndexPool.Pop(), m_bufferSize);
-            }
-            else
-            {
-                if ((m_numBytes - m_bufferSize) < m_currentIndex)
-                {
-                    return false;
-                }
-                args.SetBuffer(m_buffer, m_currentIndex, m_bufferSize);
-                m_currentIndex += m_bufferSize;
-            }
-            return true;
-        }
-
-        // Removes the buffer from a SocketAsyncEventArg object.  
-        // This frees the buffer back to the buffer pool
-        public void FreeBuffer(SocketAsyncEventArgs args)
-        {
-            m_freeIndexPool.Push(args.Offset);
-            args.SetBuffer(null, 0, 0);
-        }
-
     }
 }
