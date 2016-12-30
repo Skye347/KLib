@@ -2,12 +2,17 @@
 a cross-platform (using .net core) network library for creating client/server easier
 **written for practicing**
 ## TODO:
-1. Using Async Socket API(2016-12-17 done stage1)
-2. Thread(2016-12-17 done stage1)
+1. Using Async Socket API---
+2. Thread
 3. UDP Protocol
 4. SSL Protocol
 
 ### Changelog
+
+#### 2016-12-30
+1. add Unified Network Object(UniNetObject) to do wrap.
+2. init udp protocol
+3. 
 
 #### 2016-12-25
 1. recreate projects to fix build error
