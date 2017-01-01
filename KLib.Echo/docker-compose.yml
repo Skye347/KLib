@@ -1,0 +1,8 @@
+version: '2'
+
+services:
+  klib.echo:
+    image: klib.echo
+    build:
+      context: .
+      dockerfile: Dockerfile
