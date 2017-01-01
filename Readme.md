@@ -4,15 +4,18 @@ a cross-platform (using .net core) network library for creating client/server ea
 ## TODO:
 1. Using Async Socket API---
 2. Thread
-3. UDP Protocol
-4. SSL Protocol
+3. UDP Protocol---
+4. SSL Protocol---
+5. Try TaskCore
 
 ### Changelog
+
+#### 2017-01-02
+1. Init Ssl protocol
 
 #### 2016-12-30
 1. add Unified Network Object(UniNetObject) to do wrap.
 2. init udp protocol
-3. 
 
 #### 2016-12-25
 1. recreate projects to fix build error
