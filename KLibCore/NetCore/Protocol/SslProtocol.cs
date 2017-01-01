@@ -1,28 +1,49 @@
 ﻿using System;
 using System.Net;
 using System.Net.Sockets;
+using System.Net.Security;
 using KLib.NetCore.Error;
+using System.Security.Cryptography.X509Certificates;
 using System.Collections.Generic;
 using System.Text;
 
 namespace KLib.NetCore.Protocol
 {
-    public class ProtocolOpTcp : ProtocolOpBase
+    public class ProtocolOpSsl : ProtocolOpBase
     {
-        private Socket GetRawSocket(UniNetObject connection)
+        //private Socket GetRawSocket(UniNetObject connection)
+        //{
+        //    if (connection.ConnectionType == 0x20)
+        //    {
+        //        return (connection.innerObject as SslStream).;
+        //    }
+        //    else if (connection.ConnectionType == 0x21)
+        //    {
+        //        return (connection.innerObject as SocketAsyncEventArgs).ConnectSocket;
+        //    }
+        //    else if (connection.ConnectionType == 0x10)
+        //    {
+        //        return (connection.innerObject as Socket);
+        //    }
+        //    else
+        //    {
+        //        return null;
+        //    }
+        //}
+        private SslStream GetRawStream(UniNetObject connection)
         {
             if (connection.ConnectionType == 0x20)
             {
-                return (connection.innerObject as SocketAsyncEventArgs).AcceptSocket;
+                return (connection.innerObject as SslStream);
             }
-            else if (connection.ConnectionType == 0x21)
-            {
-                return (connection.innerObject as SocketAsyncEventArgs).ConnectSocket;
-            }
-            else if (connection.ConnectionType == 0x10)
-            {
-                return (connection.innerObject as Socket);
-            }
+            //else if (connection.ConnectionType == 0x21)
+            //{
+            //    return (connection.innerObject as SocketAsyncEventArgs).ConnectSocket;
+            //}
+            //else if (connection.ConnectionType == 0x10)
+            //{
+            //    return (connection.innerObject as Socket);
+            //}
             else
             {
                 return null;
@@ -31,11 +52,11 @@ namespace KLib.NetCore.Protocol
 
         public void Write(Byte[] data, UniNetObject connection, out NetCoreException err)
         {
-            Socket socket = GetRawSocket(connection);
+            SslStream sslStream = GetRawStream(connection);
             try
             {
                 err = null;
-                socket.Send(data);
+                sslStream.Write(data);
             }
             catch (SocketException e)
             {
@@ -79,17 +100,43 @@ namespace KLib.NetCore.Protocol
         public void ConnectAsync(UniNetObject uniObject, IPAddress ipAddress, int Port)
         {
             Socket _Socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-            var connectArgs = uniObject.innerObject as SocketAsyncEventArgs;
-            if (connectArgs == null)
+            _Socket.Connect(new IPEndPoint(ipAddress, Port));
+            var stream = new NetworkStream(_Socket);
+            var SslStream = new SslStream(stream, false,
+                (object s, X509Certificate certificate, X509Chain chain, SslPolicyErrors sslPolicyErrors) =>
+                {
+                    //if (sslPolicyErrors == SslPolicyErrors.None)//验证服务端证书验证是否有错误
+                    //{
+                    //    return true;
+                    //}
+                    //return false;
+                    return true;
+                },
+                null
+            );
+            if (ClientCert == null)
             {
-                return;
+                var task = SslStream.AuthenticateAsClientAsync(targetHost);
+                task.Wait();
             }
-            uniObject.ConnectionType = 0x21;
-            connectArgs.RemoteEndPoint = new IPEndPoint(ipAddress, Port);
-            if (!_Socket.ConnectAsync(connectArgs))
+            else
             {
-                uniObject.IOCompletedMethod(uniObject);
+                var task =SslStream.AuthenticateAsClientAsync("s", new X509Certificate2Collection(ClientCert), SslProtocol, false);
+                task.Wait();
             }
+            uniObject.innerObject = SslStream;
+            //var connectArgs = uniObject.innerObject as SocketAsyncEventArgs;
+            //if (connectArgs == null)
+            //{
+            //    return;
+            //}
+            uniObject.ConnectionType = 0x20;
+            //connectArgs.RemoteEndPoint = new IPEndPoint(ipAddress, Port);
+            //if (!_Socket.ConnectAsync(connectArgs))
+            //{
+            //    uniObject.IOCompletedMethod(uniObject);
+            //}
+            uniObject.IOCompletedMethod(uniObject);
             return;
         }
         public Socket Connect(IPAddress ipAddress, int Port, out SocketException error)
@@ -156,11 +203,14 @@ namespace KLib.NetCore.Protocol
         public void SetAsyncCompleted(Action<UniNetObject> callback, object connectObject)
         {
             var args = connectObject as SocketAsyncEventArgs;
-            args.Completed += new EventHandler<SocketAsyncEventArgs>((object Sender, SocketAsyncEventArgs connectArgs) =>
+            if (args != null)
             {
-                var uniObject = args.UserToken as UniNetObject;
-                callback(uniObject);
-            });
+                args.Completed += new EventHandler<SocketAsyncEventArgs>((object Sender, SocketAsyncEventArgs connectArgs) =>
+                {
+                    var uniObject = args.UserToken as UniNetObject;
+                    callback(uniObject);
+                });
+            }
         }
 
         public void AttachUniAsyncObject(object connectObject, UniNetObject uniObject)
@@ -177,19 +227,19 @@ namespace KLib.NetCore.Protocol
 
         public byte[] Receive(UniNetObject uniObject, out NetCoreError err)
         {
-            var connectionArgs = uniObject.innerObject as SocketAsyncEventArgs;
-            if (connectionArgs.SocketError != SocketError.Success)
-            {
-                err = NetCoreError.SocketError;
-                return null;
-            }
-            if (connectionArgs.BytesTransferred == 0)
-            {
-                err = NetCoreError.SocketError;
-                return null;
-            }
-            byte[] buffer = new byte[connectionArgs.BytesTransferred];
-            Array.Copy(connectionArgs.Buffer, buffer, connectionArgs.BytesTransferred);
+            var connectionArgs = uniObject.innerObject as SslStream;
+            //if (connectionArgs.SocketError != SocketError.Success)
+            //{
+            //    err = NetCoreError.SocketError;
+            //    return null;
+            //}
+            //if (connectionArgs.BytesTransferred == 0)
+            //{
+            //    err = NetCoreError.SocketError;
+            //    return null;
+            //}
+            byte[] buffer = new byte[uniObject.BufferLength];
+            Array.Copy(uniObject.Buffer, buffer, uniObject.BufferLength);
             err = NetCoreError.Success;
             return buffer;
         }
@@ -197,20 +247,31 @@ namespace KLib.NetCore.Protocol
         public bool ReceiveAsync(UniNetObject uniObject)
         {
             var connectionArgs = uniObject.innerObject as SocketAsyncEventArgs;
-            Socket socket = GetRawSocket(uniObject);
-            return socket.ReceiveAsync(connectionArgs);
+            SslStream sslstrem = GetRawStream(uniObject);
+            var task=sslstrem.ReadAsync(uniObject.Buffer, 0, uniObject.Buffer.Length);
+            if (task.IsCompleted)
+            {
+                return false;
+            }
+            else
+            {
+                task.ContinueWith(t =>
+                {
+                    uniObject.BufferLength = task.Result;
+                    uniObject.IOCompletedMethod(uniObject);
+                });
+                return true;
+            }
         }
 
         public void CleanAsyncObject(UniNetObject uniObject)
         {
-            var connectionArgs = uniObject.innerObject as SocketAsyncEventArgs;
-            connectionArgs.RemoteEndPoint = null;
-            connectionArgs.AcceptSocket = null;
+            DisposeAsyncObject(uniObject);
         }
 
         public void DisposeAsyncObject(UniNetObject uniObject)
         {
-            var connectionArgs = uniObject.innerObject as SocketAsyncEventArgs;
+            var connectionArgs = uniObject.innerObject as SslStream;
             uniObject.innerObject = null;
             connectionArgs.Dispose();
         }
@@ -229,17 +290,48 @@ namespace KLib.NetCore.Protocol
 
         public void SetBuffer(UniNetObject uniObject, byte[] buf, int a, int b)
         {
-            var Args = uniObject.innerObject as SocketAsyncEventArgs;
-            Args.SetBuffer(buf, a, b);
+            //var Args = uniObject.innerObject as SocketAsyncEventArgs;
+            //Args.SetBuffer(buf, a, b);
         }
 
         public UniNetObject GetAcceptedUniObject(UniNetObject AcceptObject, ref UniNetObject ClientObject)
         {
             var Args = AcceptObject.innerObject as SocketAsyncEventArgs;
             ClientObject.ConnectionType = 0x20;//async accept
-            (ClientObject.innerObject as SocketAsyncEventArgs).AcceptSocket = Args.AcceptSocket;
+            var AcceptSocket = Args.AcceptSocket;
+            var SocketStream = new NetworkStream(AcceptSocket);
+            var SslStream = new SslStream(SocketStream);
+            var AuthTask=SslStream.AuthenticateAsServerAsync(ServerCert, false, SslProtocol, true);
+            AuthTask.Wait();
+            ClientObject.innerObject = SslStream;
+            //(ClientObject.innerObject as SocketAsyncEventArgs).AcceptSocket = Args.AcceptSocket;
             Args.AcceptSocket = null;
             return ClientObject;
         }
+
+        public System.Security.Authentication.SslProtocols SslProtocol=System.Security.Authentication.SslProtocols.Tls;
+        public X509Certificate2 ServerCert = null;
+        public X509Certificate2 ClientCert = null;
+        public String targetHost;
+        public static ProtocolOpSsl BuildProtocolSsl()
+        {
+            return new ProtocolOpSsl();
+        }
+        public ProtocolOpSsl SetServerCert(string PFXPath, string PFXPwd)
+        {
+            ServerCert = new X509Certificate2(PFXPath, PFXPwd);
+            return this;
+        }
+        public ProtocolOpSsl SetClientCert(string PFXPath,string PFXPwd)
+        {
+            ClientCert = new X509Certificate2(PFXPath, PFXPwd);
+            return this;
+        }
+        public ProtocolOpSsl SetTargetHost(string targetHost)
+        {
+            this.targetHost = targetHost;
+            return this;
+        }
+
     }
 }

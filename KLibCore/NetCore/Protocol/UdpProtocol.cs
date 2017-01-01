@@ -60,13 +60,13 @@ namespace KLib.NetCore.Protocol
             }
         }
 
-        public SocketAsyncEventArgs ConnectAsync(UniNetObject uniObject, IPAddress ipAddress, int Port)
+        public void ConnectAsync(UniNetObject uniObject, IPAddress ipAddress, int Port)
         {
             Socket _Socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
             var connectArgs = uniObject.innerObject as SocketAsyncEventArgs;
             if (connectArgs == null)
             {
-                return null;
+                return;
             }
             uniObject.ConnectionType = 0x20;
             connectArgs.RemoteEndPoint = new IPEndPoint(ipAddress, Port);
@@ -75,7 +75,7 @@ namespace KLib.NetCore.Protocol
             {
                 uniObject.IOCompletedMethod(uniObject);
             }
-            return connectArgs;
+            //return connectArgs;
         }
 
         public byte[] ContinueReceive(Socket socket, out SocketException err)
@@ -117,9 +117,8 @@ namespace KLib.NetCore.Protocol
             clientArgs.RemoteEndPoint = Args.RemoteEndPoint;
             if (Args.BytesTransferred != 0)
             {
-                byte[] a = new byte[Args.BytesTransferred];
-                Array.Copy(Args.Buffer, a, Args.BytesTransferred);
-                ClientObject.remainData = a;
+                Array.Copy(Args.Buffer, ClientObject.Buffer, Args.BytesTransferred);
+                ClientObject.BufferLength = Args.BytesTransferred;
             }
             return ClientObject;
         }

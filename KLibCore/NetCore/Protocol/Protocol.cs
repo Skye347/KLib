@@ -19,7 +19,7 @@ namespace KLib.NetCore.Protocol{
         object GetAsyncObject();
         void AttachUniAsyncObject(object connectObject, UniNetObject uniObject);
         UniNetObject GetUniAsyncObject(object connectObject);
-        SocketAsyncEventArgs ConnectAsync(UniNetObject uniObject, IPAddress ipAddress, int Port);
+        void ConnectAsync(UniNetObject uniObject, IPAddress ipAddress, int Port);
         void SetAsyncCompleted(Action<UniNetObject> callback, object connectObject);
         byte[] Receive(UniNetObject uniObject,out NetCoreError err);
         bool ReceiveAsync(UniNetObject uniObject);

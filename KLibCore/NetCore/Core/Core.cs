@@ -77,7 +77,8 @@ namespace KLib.NetCore
         public int ConnectionType;
         public UniNetOperation LastOperation;
         public NetCore.Error.NetCoreError ObjectError;
-        public byte[] remainData;
+        public byte[] Buffer;
+        public int BufferLength=0;
         public object innerObject;
         public object stateObject;
         private ProtocolOpBase protocol;
@@ -135,6 +136,7 @@ namespace KLib.NetCore
 
         public void SetBuffer(byte[] buf, int a, int b)
         {
+            Buffer = buf;
             protocol.SetBuffer(this, buf, a, b);
         }
 

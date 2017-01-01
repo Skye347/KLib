@@ -4,7 +4,8 @@ using System.Net.Sockets;
 using KLib.NetCore;
 using KLib.HTTP;
 using KLib.Log;
-using HtmlAgilityPack;
+using KLib.NetCore.Protocol;
+//using HtmlAgilityPack;
 using System.IO;
 
 class Program
@@ -14,8 +15,9 @@ class Program
         Log.displayTime = true;
         //HTTPOp.Init();
         EchoProtocolCallback.StartEchoServer("127.0.0.1", 1010);
-        //EchoProtocolCallback.StartEchoClient("127.0.0.1", 55056, "a hi", false);
+        //EchoProtocolCallback.StartEchoClient("127.0.0.1", 1010, "a hi", false);
         //EchoProtocolCallback.StartEchoClient("127.0.0.1", 1010, "b hi", false);
+        //EchoProtocolCallback.StartEchoClient("127.0.0.1", 1010, "c hi", false);
         //HTTPOp.Request(HTTPMethod.GET, "http://www.oschina.net/",null, RequestCallback);
         System.Console.ReadLine();
     }
@@ -63,7 +65,9 @@ public class EchoProtocolCallback : KLib.NetCore.Callback.CallbackCollection
     public static void StartEchoServer(String ip, int port)
     {
         EchoProtocolCallback EchoCallback = new EchoProtocolCallback();
-        EchoCallback.UseUdp();
+        var sslProtocol=ProtocolOpSsl.BuildProtocolSsl().SetServerCert(@"d:/server.pfx","1234");
+        EchoCallback.UseCustom(sslProtocol);
+        //EchoCallback.UseTcp();
         Core EchoServerCore = new UniAsynCore();
         EchoServerCore.SetServer(ip, port, EchoCallback,10);
         EchoServerCore.StartListen();
@@ -75,7 +79,8 @@ public class EchoProtocolCallback : KLib.NetCore.Callback.CallbackCollection
         EchoProtocolCallback EchoCallback = new EchoProtocolCallback();
         EchoCallback.data = data;
         EchoCallback.displayReceive = displayReceive;
-        EchoCallback.UseUdp();
+        var sslProtocol = ProtocolOpSsl.BuildProtocolSsl().SetTargetHost("s");
+        EchoCallback.UseCustom(sslProtocol);
         Core EchoClientCore = new UniAsynCore();
         EchoClientCore.SetClient(EchoCallback, true);
         EchoClientCore.Connect(ip, port);

@@ -107,11 +107,11 @@ namespace KLib.NetCore
             clientUniObject.SetCompletedHandler(ProcessIO);
             clientUniObject = _Callback._ProtocolOp.GetAcceptedUniObject(AcceptedUniObject, ref clientUniObject);
             _Callback.Accepted(clientUniObject, out err);
-            if (clientUniObject.remainData != null)
+            if (clientUniObject.BufferLength != 0)
             {
-                _Callback.Received(clientUniObject.remainData, clientUniObject, out err, clientUniObject.stateObject);
+                _Callback.Received(clientUniObject.Buffer, clientUniObject, out err, clientUniObject.stateObject);
             }
-            clientUniObject.remainData = null;
+            clientUniObject.BufferLength = 0;
             if (err != null)
             {
                 //ProcessBadConnection(uniObject);
