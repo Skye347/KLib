@@ -197,6 +197,11 @@ namespace KLib.NetCore.Protocol
         public bool ReceiveAsync(UniNetObject uniObject)
         {
             var connectionArgs = uniObject.innerObject as SocketAsyncEventArgs;
+            if (connectionArgs == null)
+            {
+                uniObject.ObjectError = NetCoreError.Fault;
+                return false;
+            }
             Socket socket = GetRawSocket(uniObject);
             return socket.ReceiveAsync(connectionArgs);
         }

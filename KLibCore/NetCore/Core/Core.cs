@@ -76,7 +76,7 @@ namespace KLib.NetCore
     {
         public int ConnectionType;
         public UniNetOperation LastOperation;
-        public NetCore.Error.NetCoreError ObjectError;
+        public NetCore.Error.NetCoreError ObjectError=Error.NetCoreError.Success;
         public byte[] Buffer;
         public int BufferLength=0;
         public object innerObject;
@@ -114,7 +114,8 @@ namespace KLib.NetCore
             var data = protocol.Receive(this, out err);
             if (err != Error.NetCoreError.Success)
             {
-                log("NetCoreError", ERROR, "UniAsynCore.ReceiveAll");
+                //log("NetCoreError", ERROR, "UniAsynCore.ReceiveAll");
+                return null;
             }
             return data;
         }

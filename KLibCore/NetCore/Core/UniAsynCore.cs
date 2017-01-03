@@ -150,10 +150,11 @@ namespace KLib.NetCore
 
         private void ProcessBadConnection(UniNetObject uniObject)
         {
+            log("bad connection", ERROR, "ProcessBadConnection");
             _Callback.Aborted(uniObject, uniObject.stateObject);
             //if (_ConnectPool == null)
             //{
-            //    uniObject.Dispose();
+                uniObject.Dispose();
             //}
             //else
             //{
@@ -164,11 +165,11 @@ namespace KLib.NetCore
 
         private void ProcessReceive(UniNetObject uniObject)
         {   //bad connection
-            //if (connectionArgs.SocketError != SocketError.Success)
-            //{
-            //    ProcessBadConnection(connectionArgs);
-            //    return;
-            //}
+            if (uniObject.ObjectError != Error.NetCoreError.Success)
+            {
+                ProcessBadConnection(uniObject);
+                return;
+            }
             //if (connectionArgs.BytesTransferred == 0)
             //{
             //    (connectionArgs.UserToken as SocketStateObject).socket.Shutdown(SocketShutdown.Both);
@@ -180,6 +181,11 @@ namespace KLib.NetCore
             //Socket clientSocket = (connectionArgs.UserToken as SocketStateObject).socket;
             //Array.Copy(connectionArgs.Buffer, buffer, connectionArgs.BytesTransferred);
             byte[] buffer = uniObject.ReceiveAll();
+            if (buffer == null)
+            {
+                ProcessBadConnection(uniObject);
+                return;
+            }
             //receive
             NetCore.Error.NetCoreException err;
             var State = _Callback.Received(buffer, uniObject, out err, uniObject.stateObject);
@@ -193,6 +199,11 @@ namespace KLib.NetCore
 
         private void ProcessIO(UniNetObject uniObject)
         {
+            if (uniObject.ObjectError != Error.NetCoreError.Success)
+            {
+                ProcessBadConnection(uniObject);
+                return;
+            }
             if (uniObject.LastOperation == UniNetOperation.Accept)
             {
                 StartAccept(uniObject);
@@ -200,11 +211,11 @@ namespace KLib.NetCore
             else if (uniObject.LastOperation == UniNetOperation.Receive)
             {
                 ProcessReceive(uniObject);
-                //if (connectionArgs.UserToken == null)
-                //{
-                //    return;
-                //    //ProcessBadConnection(connectionArgs)
-                //}
+                if (uniObject.innerObject==null)
+                {
+                    return;
+                    //ProcessBadConnection(connectionArgs)
+                }
                 if (!uniObject.ReceiveAsync(uniObject))
                 {
                     ProcessReceive(uniObject);

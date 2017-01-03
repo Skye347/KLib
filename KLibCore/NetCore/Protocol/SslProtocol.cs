@@ -258,6 +258,10 @@ namespace KLib.NetCore.Protocol
                 task.ContinueWith(t =>
                 {
                     uniObject.BufferLength = task.Result;
+                    if (uniObject.BufferLength == 0)
+                    {
+                        uniObject.ObjectError = NetCoreError.Disconnecting;
+                    }
                     uniObject.IOCompletedMethod(uniObject);
                 });
                 return true;
