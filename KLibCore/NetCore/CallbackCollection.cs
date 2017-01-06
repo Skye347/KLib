@@ -41,6 +41,10 @@ namespace KLib.NetCore.Callback{
         {
 
         }
+        virtual public void Timeout(UniNetObject connection, object Addition)
+        {
+
+        }
         //public void ThreadReceived(Object Param){
         //    bool isContinue=Received(((CoreThreadPassObj)Param).data,((CoreThreadPassObj)Param).socket,null);
         //    SocketException receiveErr=null;

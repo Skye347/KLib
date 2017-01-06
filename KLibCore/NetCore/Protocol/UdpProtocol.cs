@@ -194,6 +194,11 @@ namespace KLib.NetCore.Protocol
             args.Completed += new EventHandler<SocketAsyncEventArgs>((object Sender, SocketAsyncEventArgs connectArgs) =>
             {
                 var uniObject = args.UserToken as UniNetObject;
+                if (uniObject.ObjectError == NetCoreError.TimedOut)
+                {
+                    return;
+                }
+                uniObject.FreeTimeout();
                 callback(uniObject);
             });
         }

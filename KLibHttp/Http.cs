@@ -18,7 +18,9 @@ namespace KLib.HTTP
     public enum HTTPError
     {
         DNSERROR,
-        SUCCESS
+        SUCCESS,
+        UNSUPPORT,
+        TIMEOUT
     }
 
     public class HTTPCookie
@@ -93,22 +95,37 @@ namespace KLib.HTTP
         }
     }
 
-    public class HTTPOp:CallbackCollection
+    public class HTTPOp : CallbackCollection
     {
         public static HTTPRequest ConnectedRequest;
-        HTTPOp()
+        public static int Id = 0;
+        void useHTTP()
         {
             UseTcp();
         }
+        KLib.NetCore.Protocol.ProtocolOpSsl useHTTPS()
+        {
+            var ssl=new KLib.NetCore.Protocol.ProtocolOpSsl();
+            UseCustom(ssl);
+            return ssl;
+        }
+        private static KLib.NetCore.Protocol.ProtocolOpSsl sslProtocol;
         private static object newConnectLock = new object();
         new private static Core currentCore;
+        private static Core httpsCore;
         public static void Init()
         {
             HTTPOp protocolInstance = new HTTPOp();
+            protocolInstance.useHTTP();
             Core newCore = new UniAsynCore();
             newCore.SetClient(protocolInstance, false);
             protocolInstance.BindCore(newCore);
             currentCore = newCore;
+            HTTPOp httpsProtocol = new HTTPOp();
+            sslProtocol=httpsProtocol.useHTTPS();
+            httpsCore = new UniAsynCore();
+            httpsCore.SetClient(httpsProtocol, false);
+            httpsProtocol.BindCore(httpsCore);
         }
         public static HTTPError Request(HTTPRequest request)
         {
@@ -124,12 +141,26 @@ namespace KLib.HTTP
                     Monitor.Wait(newConnectLock);
                 }
             }
-            log("request:" + request.Host, INFO, "HTTP.request");
-            ConnectedRequest = request;
-            currentCore.Connect(ipAddress.ToString(), 80);
+            if (request.Scheme == "http")
+            {
+                log("request http:" + request.Host, INFO, "HTTP.request");
+                ConnectedRequest = request;
+                currentCore.Connect(ipAddress.ToString(), 80);
+            }
+            else if(request.Scheme=="https")
+            {
+                log("request https:" + request.Host, INFO, "HTTP.request");
+                ConnectedRequest = request;
+                sslProtocol.SetTargetHost(ipAddress, request.Host);
+                httpsCore.Connect(ipAddress.ToString(), 443);
+            }
+            else
+            {
+                return HTTPError.UNSUPPORT;
+            }
             return HTTPError.SUCCESS;
         }
-        public static HTTPError Request(HTTPMethod method,string Url,object Addition,HTTPRequest.RequestCallback callback, HTTPCookie cookie = null, HTTPHeader additionHeader = null)
+        public static HTTPError Request(HTTPMethod method,string Url,object Addition,HTTPRequest.RequestCallback callback, HTTPCookie cookie = null, HTTPHeader additionHeader = null,string PostData=null)
         {
             HTTPStateObject state = new HTTPStateObject();
             HTTPRequest request = new HTTPRequest()
@@ -141,12 +172,18 @@ namespace KLib.HTTP
             request.Header = additionHeader;
             request.Callback = callback;
             request.Addition = Addition;
-            request.SetUrl(path.PathAndQuery,path.Host);
+            request.SetUrl(path.Scheme,path.PathAndQuery,path.Host);
+            request.PostData = PostData;
             return Request(request);
         }
         override public object Received(byte[] data, UniNetObject connection, out NetCore.Error.NetCoreException err, object Addition)
         {
             err = null;
+            log("id:" + (connection.stateObject as HTTPStateObject)?.request.id, INFO, "HTTP.Received");
+            if (connection.CompleteTime != 0)
+            {
+                log("time:" + connection.CompleteTime, INFO, "HTTP.Received");
+            }
             var state = ProcessHTTPResponse(data, Addition as HTTPStateObject,out var nextRequest);
             if (nextRequest != null)
             {
@@ -163,6 +200,13 @@ namespace KLib.HTTP
             {
                 HTTPOp.Request(state.request);
             }
+        }
+        public override void Timeout(UniNetObject connection, object Addition)
+        {
+            HTTPStateObject state = Addition as HTTPStateObject;
+            log("id:" + state?.request.id, ERROR, "HTTP.Received");
+            log("timeout:" + connection.CompleteTime, ERROR, "HTTP.Received");
+            log("connection info:" + state?.Length, ERROR, "HTTP.Received");
         }
         private static HTTPRequest ProcessResponse(HTTPResponse response,HTTPStateObject state)
         {
@@ -205,14 +249,29 @@ namespace KLib.HTTP
             try
             {
                 //var tmpString = Encoding.UTF8.GetString(data);
-                if ((!state.isChunking) && (!state.isReadingByLength))
+                if (state.complete==HTTPStateComplete.Init)
                 {//process normally
-                    HTTPResponse response = new HTTPResponse();
+                    HTTPResponse response;
+                    if (state.waitedResponse == null)
+                    {
+                        response = new HTTPResponse();
+                    }
+                    else
+                    {
+                        response = state.waitedResponse;
+                    }
                     response.Parse(data);
-                    if (response.header.ContainsKey("Transfer-Encoding") && response.header["Transfer-Encoding"].Contains("chunked"))
+                    if (response.headerDataEnds == -1)
                     {
                         state.waitedResponse = response;
-                        state.isChunking = true;
+                        state.complete = HTTPStateComplete.incompletedHeader;
+                        request = null;
+                        return state;
+                    }
+                    else if (response.header.ContainsKey("Transfer-Encoding") && response.header["Transfer-Encoding"].Contains("chunked"))
+                    {
+                        state.waitedResponse = response;
+                        state.complete = HTTPStateComplete.isChunking;
                         request = null;
                         return state;
                     }
@@ -224,18 +283,18 @@ namespace KLib.HTTP
                             request = ProcessResponse(response, state);
                             return state;
                         }
-                        state.isReadingByLength = true;
+                        state.complete = HTTPStateComplete.isReadingByLength;
                         state.waitedResponse = response;
                         request = null;
                         return state;
                     }
                     else
                     {
-                        request = ProcessResponse(response,state);
+                        request = ProcessResponse(response, state);
                         return state;
                     }
                 }
-                else if (state.isChunking)
+                else if (state.complete == HTTPStateComplete.isChunking)
                 {//process chunked
                     //state.waitedResponse.body += Encoding.UTF8.GetString(data);
                     state.waitedResponse.AddBody(data);
@@ -245,7 +304,7 @@ namespace KLib.HTTP
                         state.waitedResponse.body = state.waitedResponse.body.Substring(6, state.waitedResponse.body.Length - 12);
                         request=ProcessResponse(state.waitedResponse, state);
                         state.waitedResponse = null;
-                        state.isChunking = false;
+                        state.complete = HTTPStateComplete.Init;
                         return state;
                     }
                     else
@@ -254,7 +313,7 @@ namespace KLib.HTTP
                         return state;
                     }
                 }
-                else// if (state.isReadingByLength)
+                else if (state.complete==HTTPStateComplete.isReadingByLength)
                 {//
                     state.Length -= data.Length;
                     state.waitedResponse.AddBody(data);
@@ -266,7 +325,7 @@ namespace KLib.HTTP
                     {
                         request=ProcessResponse(state.waitedResponse, state);
                         state.waitedResponse = null;
-                        state.isReadingByLength = false;
+                        state.complete = HTTPStateComplete.Init;
                         return state;
                     }
                     else
@@ -274,6 +333,26 @@ namespace KLib.HTTP
                         request = null;
                         return state;
                     }
+                }
+                else if(state.complete==HTTPStateComplete.incompletedHeader)//incompleted header
+                {
+                    state.waitedResponse.AddBody(data);
+                    state.waitedResponse.Parse(state.waitedResponse.binaryData);
+                    if (state.waitedResponse.headerDataEnds == -1)
+                    {
+                        request = null;
+                        return state;
+                    }
+                    else
+                    {
+                        state.complete = HTTPStateComplete.Init;
+                        return ProcessHTTPResponse(state.waitedResponse.binaryData, state, out request);
+                    }
+                }
+                else
+                {
+                    request = ProcessResponse(state.waitedResponse, state);
+                    return state;
                 }
                 //if (state.isChunking || state.isReadingByLength)
                 //{
@@ -299,23 +378,39 @@ namespace KLib.HTTP
 
     public class HTTPStateObject
     {
-        public bool isChunking = false, isReadingByLength = false;
+        public HTTPStateComplete complete = HTTPStateComplete.Init;
         public HTTPResponse waitedResponse;
         public int Length;
         public HTTPRequest request;
     }
 
+    public enum HTTPStateComplete
+    {
+        isChunking,
+        isReadingByLength,
+        incompletedHeader,
+        Init
+    }
+
     public class HTTPRequest
     {
+        public HTTPRequest()
+        {
+            Interlocked.Increment(ref HTTPOp.Id);
+            id = HTTPOp.Id;
+        }
         public delegate HTTPRequest RequestCallback(HTTPResponse response);
+        public int id;
         public HTTPMethod method;
         public string Url;
         public string Host;
+        public string Scheme;
         public bool Done = false;
         public object Addition;
         public RequestCallback Callback;
         public Dictionary<string, string> Header;
         public Dictionary<string, string> Cookie;
+        public string PostData;
         public HTTPRequest ClearHeader()
         {
             this.Header = null;
@@ -327,10 +422,11 @@ namespace KLib.HTTP
             this.Url = path.PathAndQuery;
             this.Host = path.Host;
         }
-        public void SetUrl(string Url,string Host)
+        public void SetUrl(string Scheme,string Url,string Host)
         {
             this.Url = Url;
             this.Host = Host;
+            this.Scheme = Scheme;
         }
         public HTTPRequest CopyTo()
         {
@@ -339,6 +435,7 @@ namespace KLib.HTTP
             request.Callback = this.Callback;
             request.Host = this.Host;
             request.method = this.method;
+            request.Scheme = this.Scheme;
             //if (this.Cookie != null)  request.Cookie = new Dictionary<string, string>(this.Cookie);
             //if (this.Header != null)  request.Header = new Dictionary<string, string>(this.Header);
             return request;
@@ -367,6 +464,21 @@ namespace KLib.HTTP
                 + Host
             );
             string result = line1 + "\n" + line2 + "\n";
+            if (HTTPMethod.POST == method)
+            {
+                if (Header == null)
+                {
+                    Header = new HTTPHeader();
+                }
+                if (Header.ContainsKey("Content-Length"))
+                {
+                    Header["Content-Length"] = Encoding.UTF8.GetByteCount(PostData).ToString();
+                }
+                else
+                {
+                    Header.Add("Content-Length", Encoding.UTF8.GetByteCount(PostData).ToString());
+                }
+            }
             if (Header != null)
             {
                 StringBuilder AdditionHeader = new StringBuilder();
@@ -394,6 +506,11 @@ namespace KLib.HTTP
                 Cookie.Length -= 2;
                 result += Cookie.ToString() + "\n";
             }
+            if (method == HTTPMethod.POST)
+            {
+                result += "\n";
+                result += PostData+"\n";
+            }
             //TODO:Add addition infomation
             /*
             Every new line are divided by '\r\n'
@@ -416,12 +533,12 @@ namespace KLib.HTTP
         public int bodyBytesLength;
         public int headerDataEnds;
         public HTTPRequest request;
-        public HTTPRequest MakeRequest(HTTPMethod? method, string Url, object Addition, HTTPRequest.RequestCallback callback,HTTPCookie cookie=null,HTTPHeader additionHeader=null)
+        public HTTPRequest MakeRequest(HTTPMethod? method, string Url, object Addition, HTTPRequest.RequestCallback callback,HTTPCookie cookie=null,HTTPHeader additionHeader=null,string PostData=null)
         {
             Uri path = new Uri(Url);
             if (path.Host != request.Host)
             {
-                HTTPOp.Request(method.Value, Url, Addition, callback,cookie,additionHeader);
+                HTTPOp.Request(method.Value, Url, Addition, callback,cookie,additionHeader,PostData);
                 return null;
             }
             else
@@ -433,14 +550,26 @@ namespace KLib.HTTP
                 newRequest.Callback = callback ?? newRequest.Callback ;
                 //newRequest.Cookie = cookie ?? newRequest.Cookie ;
                 newRequest.Cookie = this.cookie?.AddCookie(cookie).GetCookie(path.Host);
+                newRequest.PostData = PostData;
                 //newRequest.Header = header ?? newRequest.Header ;
                 return newRequest;
             }
         }
         public HTTPResponse Parse(byte[] data)
         {
+            if (header != null)
+            {
+                return this;
+            }
             var stringData = Encoding.UTF8.GetString(data);
             this.headerDataEnds = ByteOp.PatternFind(data, new Byte[] { 0x0d, 0x0a, 0x0d, 0x0a });
+            if (headerDataEnds == -1)
+            {
+                binaryBody = true;
+                binaryData = data;
+                binaryDataEnds = data.Length;
+                return this;
+            }
             var headerString = Encoding.UTF8.GetString(ByteOp.SubArray(data, 0, headerDataEnds - 0));
             this.binaryData = ByteOp.SubArray(data, headerDataEnds + 4, data.Length - headerDataEnds - 4);
             ParseHeader(headerString);
@@ -544,8 +673,17 @@ namespace KLib.HTTP
             this.bodyBytesLength += data.Length;
             if (this.binaryBody)
             {
-                Array.Copy(data, 0, this.binaryData, this.binaryDataEnds, data.Length);
-                this.binaryDataEnds += data.Length;
+                try
+                {
+                    Array.Copy(data, 0, this.binaryData, this.binaryDataEnds, data.Length);
+                    this.binaryDataEnds += data.Length;
+                }
+                catch(System.ArgumentException e)
+                {
+                    Array.Resize(ref this.binaryData, this.binaryData.Length + data.Length);
+                    Array.Copy(data, 0, this.binaryData, this.binaryDataEnds, data.Length);
+                    this.binaryDataEnds += data.Length;
+                }
             }
             else
             {
@@ -555,213 +693,9 @@ namespace KLib.HTTP
         }
     }
 
-    //public struct HTTPHeaderStructure
-    //{
-    //    public string Url;
-    //    public string Host;
-    //    public string Version;
-    //    public HTTPMethod httpMethod;
-    //    public Dictionary<string, string> Cookie;
-    //    public Dictionary<string, string> AdditionHeader;
-    //}
-
     public enum HTTPMethod
     {
         GET,
         POST
     }
-
-    //public static class HTTPParser
-    //{
-    //    static HTTPParser()
-    //    {
-    //    }
-    //    public static HTTPResponse Parse(byte[] data)
-    //    {
-    //        HTTPResponse response = new HTTPResponse();
-    //        var headerDataEnds = PatternFind(data, new Byte[] {0x0d, 0x0a, 0x0d, 0x0a });
-    //        var headerString = Encoding.UTF8.GetString(SubArray(data, 0, headerDataEnds - 0));
-    //        var status = HTTPParserCollection.ParseStatus(headerString);
-    //        var Header = HTTPParserCollection.ParseHeader(headerString);
-    //        var Cookie = HTTPParserCollection.ParseCookie(Header);
-    //        var body = HTTPParserCollection.GetBody(stringData);
-    //        response.status = status;
-    //        response.header = Header;
-    //        response.body = body;
-    //        response.cookie = Cookie;
-    //        response.bodyBytesLength = Encoding.UTF8.GetByteCount(response.body);
-    //        return response;
-    //    }
-    //}
-
-    //public static class HTTPParserCollection
-    //{
-    //    //private static int currentLine = 1;
-    //    public static Dictionary<string, string> ParseStatus(String data)
-    //    {
-    //        String[] splitStatusLine = GetLine(data, 1).Split(' ');
-    //        Dictionary<string, string> ret = new Dictionary<String, String>{
-    //            {"Protocol",splitStatusLine[0]},
-    //            {"StatusCode",splitStatusLine[1]},
-    //            {"StatusMessage",splitStatusLine[2]}
-    //        };
-    //        return ret;
-    //    }
-
-    //    //[MethodImpl(MethodImplOptions.NoOptimization | MethodImplOptions.NoInlining)]
-    //    public static HTTPCookie ParseCookie(Dictionary<string, string> Header)
-    //    {
-    //        if (!Header.ContainsKey("Set-Cookie"))
-    //        {
-    //            return null;
-    //        }
-    //        var ret = new HTTPCookie();
-    //        var SetCookie = Header["Set-Cookie"];
-    //        Header.Remove("Set-Cookie");
-    //        ret._Domain = "";
-    //        foreach (var cookie in SetCookie.Split(';'))
-    //        {
-    //            try
-    //            {
-    //                var tmp = cookie.Split(new char[] { '=' }, 2);
-    //                var header = tmp[0];
-    //                var data = tmp[1];
-    //                if (header == " domain")
-    //                {
-    //                    if (ret._Domain =="")
-    //                    {
-    //                        ret._Domain = data;
-    //                    }
-    //                    continue;
-    //                }
-    //                ret.AddCookie(header, data, ret._Domain);
-    //            }
-    //            catch (IndexOutOfRangeException e)
-    //            {
-    //                ret.AddCookie(cookie, null, ret._Domain);
-    //            }
-    //        }
-    //        return ret;
-    //    }
-    //    public static Dictionary<string, string> ParseHeader(String data)
-    //    {
-    //        int line = 2;
-    //        Dictionary<string, string> ret = new Dictionary<String, String>();
-    //        while (true)
-    //        {
-    //            String HeaderLine = GetLine(data, line);
-    //            if (HeaderLine == "")
-    //            {
-    //                break;
-    //            }
-    //            String[] splitHeaderLine = HeaderLine.Split(new char[] { ':' }, 2);
-    //            if (ret.ContainsKey(splitHeaderLine[0]))
-    //            {
-    //                ret[splitHeaderLine[0]] += ";"+ splitHeaderLine[1].Substring(1);
-    //            }
-    //            else
-    //            {
-    //                ret.Add(splitHeaderLine[0], splitHeaderLine[1].Substring(1));
-    //            }
-    //            line++;
-    //        }
-    //        return ret;
-    //    }
-    //    public static string GetBody(String text)
-    //    {
-    //        int index = text.IndexOf("\r\n\r\n");
-    //        return text.Substring(index + 4);
-    //    }
-    //    //http://stackoverflow.com/questions/2606368/how-to-get-specific-line-from-a-string-in-c
-    //    public static string GetLine(string text, int lineNo)
-    //    {
-    //        string[] lines = text.Replace("\r", "").Split('\n');
-    //        return lines.Length >= lineNo ? lines[lineNo - 1] : null;
-    //    }
-
-    //    public static string _GetBody(string text)
-    //    {
-    //        int index = text.IndexOf("\r\n\r\n");
-    //        return text.Substring(index + 4);
-    //    }
-    //}
-
-    //public class HTTPConstructor
-    //{
-    //    private HTTPHeaderStructure Header = new HTTPHeaderStructure();
-    //    private Dictionary<HTTPMethod, String> HTTPMethodString = new Dictionary<HTTPMethod, String>
-    //    {
-    //        {HTTPMethod.GET,"GET"},
-    //        {HTTPMethod.POST,"POST"}
-    //    };
-    //    public void SetUrl(String Url)
-    //    {
-    //        Header.Url = Url;
-    //    }
-    //    public void SetHost(String Host)
-    //    {
-    //        Header.Host = Host;
-    //    }
-    //    public void SetMethod(HTTPMethod method)
-    //    {
-    //        Header.httpMethod = method;
-    //    }
-    //    public void SetCookie(HTTPCookie cookie)
-    //    {
-    //        Header.Cookie = cookie;
-    //    }
-    //    public void SetHeader(HTTPHeader header)
-    //    {
-    //        Header.AdditionHeader = header;
-    //    }
-    //    public String GetHttpRequest()
-    //    {
-    //        string line1 = "";
-    //        line1 += (
-    //            HTTPMethodString[Header.httpMethod] + " "
-    //            + Header.Url + " "
-    //            + "HTTP/1.1"
-    //            );
-    //        string line2 = "";
-    //        line2 += (
-    //            "Host: "
-    //            + Header.Host
-    //        );
-    //        string result = line1 + "\n" + line2+"\n";
-    //        if (Header.AdditionHeader != null)
-    //        {
-    //            StringBuilder AdditionHeader = new StringBuilder();
-    //            foreach(var item in Header.AdditionHeader)
-    //            {
-    //                if (item.Key == "Host") continue;
-    //                AdditionHeader.AppendFormat("{0}:{1}\n", item.Key, item.Value);
-    //            }
-    //            result += AdditionHeader.ToString();
-    //        }
-    //        if (Header.Cookie != null)
-    //        {
-    //            StringBuilder Cookie =new StringBuilder("Cookie:");
-    //            foreach(var cookie in Header.Cookie)
-    //            {
-    //                if (cookie.Value != null)
-    //                {
-    //                    Cookie.AppendFormat("{0}={1}; ", cookie.Key, cookie.Value);
-    //                }
-    //                else
-    //                {
-    //                    Cookie.AppendFormat("{0}; ", cookie.Key);
-    //                }
-    //            }
-    //            Cookie.Length-=2;
-    //            result += Cookie.ToString() + "\n";
-    //        }
-    //        //TODO:Add addition infomation
-    //        /*
-    //        Every new line are divided by '\r\n'
-    //        The data MUST be ended with TWO '\r\n'
-    //        */
-    //        result += "\n";
-    //        return result.Replace("\n", Environment.NewLine);
-    //    }
-    //}
 }

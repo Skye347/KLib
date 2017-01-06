@@ -34,10 +34,17 @@ namespace KLib.NetCore
             //byte[] buf = new byte[4096];
             //e.SetBuffer(buf, 0, 4096);
             e.SetCompletedHandler(ProcessIO);
+            e.SetTimeoutHandler(ProcessTimeout);
             //e.Completed += new EventHandler<SocketAsyncEventArgs>(ProcessIO);
             e.SetRemoteEndPoint(new IPEndPoint(IPAddress.Parse(ip), port));
             e.LastOperation = UniNetOperation.Connect;
             e.ConnectAsync();
+            e.ObjectError = Error.NetCoreError.IOPending;
+            //if (!e.StartTimeout())
+            //{
+            //    e.ObjectError = Error.NetCoreError.TimedOut;
+            //    ProcessTimeout(e);
+            //}
             //e.RemoteEndPoint = new IPEndPoint(IPAddress.Parse(ip), port);
             //Socket tempServerSocket = new Socket(SocketType.Stream, ProtocolType.Tcp);
             //e.UserToken = new SocketStateObject(tempServerSocket);
@@ -125,6 +132,7 @@ namespace KLib.NetCore
             {
                 ProcessReceive(clientUniObject);
             }
+            clientUniObject.ObjectError = Error.NetCoreError.IOPending;
             StartAccept(AcceptedUniObject);
         }
 
@@ -140,12 +148,13 @@ namespace KLib.NetCore
             }
             uniObject.stateObject = state;
             //connectionArgs.UserToken = new SocketStateObject(connectionArgs.ConnectSocket,state);
-            _BufferManager.SetBuffer(uniObject.SetBuffer, 4096);
+            _BufferManager.SetBuffer(uniObject.SetBuffer, 32768);
             uniObject.LastOperation = UniNetOperation.Receive;
             if (!uniObject.ReceiveAsync(uniObject))
             {
                 ProcessReceive(uniObject);
             }
+            uniObject.ObjectError = Error.NetCoreError.IOPending;
         }
 
         private void ProcessBadConnection(UniNetObject uniObject)
@@ -195,6 +204,11 @@ namespace KLib.NetCore
                 return;
             }
             uniObject.stateObject=State;
+        }
+
+        private void ProcessTimeout(UniNetObject uniObject)
+        {
+            _Callback.Timeout(uniObject, uniObject.stateObject);
         }
 
         private void ProcessIO(UniNetObject uniObject)

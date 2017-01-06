@@ -50,7 +50,7 @@ namespace KLib.NetCore.Error
         HostNotFound = 11001,
         TryAgain = 11002,
         NoRecovery = 11003,
-        NoData = 11004,
+        NoData = 11004
     }
 
     public class NetCoreException : System.Exception

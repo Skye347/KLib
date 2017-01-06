@@ -76,20 +76,80 @@ namespace KLib.NetCore
     {
         public int ConnectionType;
         public UniNetOperation LastOperation;
-        public NetCore.Error.NetCoreError ObjectError=Error.NetCoreError.Success;
+        private volatile int _ObjectError=(int)Error.NetCoreError.Success;
+        public NetCore.Error.NetCoreError ObjectError
+        {
+            get
+            {
+                return (NetCore.Error.NetCoreError)_ObjectError;
+            }
+            set
+            {
+                Interlocked.Exchange(ref _ObjectError, (int)value);
+            }
+        }
         public byte[] Buffer;
         public int BufferLength=0;
         public object innerObject;
         public object stateObject;
         private ProtocolOpBase protocol;
         public IPEndPoint ipEndPoint;
+        public int timeout=5000;
+        public long CompleteTime;
+        private object TimeoutLock=new object();
         public Action<UniNetObject> IOCompletedMethod;
+        public Action<UniNetObject> TimeoutMethod;
+        System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
+        System.Threading.Timer timer;
         internal void ConnectAsync()
         {
             LastOperation = UniNetOperation.Connect;
             protocol.ConnectAsync(this, ipEndPoint.Address, ipEndPoint.Port);
+            if(ObjectError!= Error.NetCoreError.IOPending)
+            {
+                ObjectError = Error.NetCoreError.IOPending;
+                StartTimeoutAsync();
+            }
         }
-
+        public delegate void TimeoutCallback(UniNetObject uniObject);
+        internal void StartTimeoutAsync()
+        {
+            //if (timer != null)
+            //{
+            //    FreeTimeout();
+            //}
+            log("start timeout", INFO, "StartTimeoutAsync");
+            sw.Reset();
+            sw.Start();
+            timer = new Timer((object a)=> {
+                var uniObject = a as UniNetObject;
+                if (uniObject.ObjectError == Error.NetCoreError.Success)
+                {
+                    return;
+                }
+                else
+                {
+                    uniObject.ObjectError = Error.NetCoreError.TimedOut;
+                    uniObject.CompleteTime = timeout;
+                    uniObject.TimeoutMethod(uniObject);
+                    return;
+                }
+            }, this,timeout,Timeout.Infinite);
+        }
+        public void FreeTimeout()
+        {
+            if (timer != null)
+            {
+                log("stop timeout", INFO, "StartTimeoutAsync");
+                CompleteTime = sw.ElapsedMilliseconds;
+                timer.Dispose();
+            }
+            ObjectError = Error.NetCoreError.Success;
+            //lock (TimeoutLock)
+            //{
+            //    Monitor.Pulse(TimeoutLock);
+            //}
+        }
         internal void SetProtocol(ProtocolOpBase protocolOp)
         {
             protocol = protocolOp;
@@ -107,6 +167,10 @@ namespace KLib.NetCore
             protocol.SetAsyncCompleted(processIO, innerObject);
             IOCompletedMethod = processIO;
         }
+        internal void SetTimeoutHandler(Action<UniNetObject> processTimeout)
+        {
+            TimeoutMethod = processTimeout;
+        }
 
         internal byte[] ReceiveAll()
         {
@@ -122,11 +186,18 @@ namespace KLib.NetCore
 
         internal bool ReceiveAsync(UniNetObject uniObject)
         {
-            return protocol.ReceiveAsync(this);
+            ObjectError = Error.NetCoreError.IOPending;
+            if (protocol.ReceiveAsync(this))
+            {
+                StartTimeoutAsync();
+                return true;
+            }
+            return false;
         }
 
         public void Dispose()
         {
+            FreeTimeout();
             protocol.DisposeAsyncObject(this);
         }
 

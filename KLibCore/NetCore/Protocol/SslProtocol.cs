@@ -105,23 +105,23 @@ namespace KLib.NetCore.Protocol
             var SslStream = new SslStream(stream, false,
                 (object s, X509Certificate certificate, X509Chain chain, SslPolicyErrors sslPolicyErrors) =>
                 {
-                    //if (sslPolicyErrors == SslPolicyErrors.None)//验证服务端证书验证是否有错误
-                    //{
-                    //    return true;
-                    //}
-                    //return false;
-                    return true;
+                    if (sslPolicyErrors == SslPolicyErrors.None)//验证服务端证书验证是否有错误
+                    {
+                        return true;
+                    }
+                    return false;
+                    //return true;
                 },
                 null
             );
             if (ClientCert == null)
             {
-                var task = SslStream.AuthenticateAsClientAsync(targetHost);
+                var task = SslStream.AuthenticateAsClientAsync(GetTargetHost(ipAddress));
                 task.Wait();
             }
             else
             {
-                var task =SslStream.AuthenticateAsClientAsync("s", new X509Certificate2Collection(ClientCert), SslProtocol, false);
+                var task =SslStream.AuthenticateAsClientAsync(GetTargetHost(ipAddress), new X509Certificate2Collection(ClientCert), SslProtocol, false);
                 task.Wait();
             }
             uniObject.innerObject = SslStream;
@@ -208,6 +208,11 @@ namespace KLib.NetCore.Protocol
                 args.Completed += new EventHandler<SocketAsyncEventArgs>((object Sender, SocketAsyncEventArgs connectArgs) =>
                 {
                     var uniObject = args.UserToken as UniNetObject;
+                    if (uniObject.ObjectError == NetCoreError.TimedOut)
+                    {
+                        return;
+                    }
+                    uniObject.FreeTimeout();
                     callback(uniObject);
                 });
             }
@@ -262,6 +267,11 @@ namespace KLib.NetCore.Protocol
                     {
                         uniObject.ObjectError = NetCoreError.Disconnecting;
                     }
+                    if (uniObject.ObjectError == NetCoreError.TimedOut)
+                    {
+                        return;
+                    }
+                    uniObject.FreeTimeout();
                     uniObject.IOCompletedMethod(uniObject);
                 });
                 return true;
@@ -331,11 +341,18 @@ namespace KLib.NetCore.Protocol
             ClientCert = new X509Certificate2(PFXPath, PFXPwd);
             return this;
         }
-        public ProtocolOpSsl SetTargetHost(string targetHost)
+        public ProtocolOpSsl SetTargetHost(IPAddress IPAddress,string targetHost)
         {
-            this.targetHost = targetHost;
+            if (!targetHostByIp.ContainsKey(IPAddress))
+            {
+                targetHostByIp.Add(IPAddress, targetHost);
+            }
             return this;
         }
-
+        public string GetTargetHost(IPAddress IPAddress)
+        {
+            return targetHostByIp[IPAddress];
+        }
+        private Dictionary<IPAddress, string> targetHostByIp = new Dictionary<IPAddress, string>();
     }
 }
