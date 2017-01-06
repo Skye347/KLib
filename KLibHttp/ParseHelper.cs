@@ -17,6 +17,10 @@ namespace KLib.HTTP.ParseHelper
             {
                 if (data[i] == pattern[0])
                 {
+                    if (i + pattern.Length > data.Length)
+                    {
+                        break;
+                    }
                     var paritalArray = (IEnumerable<byte>)(new ArraySegment<byte>(data, i, pattern.Length));
                     if (pattern.SequenceEqual(paritalArray))
                     {
@@ -69,7 +73,19 @@ namespace KLib.HTTP.ParseHelper
     {
         public static bool isBinaryType(string contentType)
         {
-            return !contentType.Contains("text");
+            foreach(var item in textTypeKeyWord)
+            {
+                if (contentType.Contains(item))
+                {
+                    return false;
+                }
+            }
+            return true;
         }
+        private static List<string> textTypeKeyWord = new List<string>
+        {
+            "text",
+            "json"
+        };
     }
 }
