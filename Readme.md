@@ -10,6 +10,11 @@ a cross-platform (using .net core) network library for creating client/server ea
 
 ### Changelog
 
+#### 2017-01-06
+1. Add Timeout Detect
+2. HTTP Lib Bug fix
+3. Add raw Post data support
+
 #### 2017-01-02
 1. Init Ssl protocol
 
