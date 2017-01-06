@@ -33,6 +33,7 @@ namespace KLib.Spider
         public string Url;
         public Spider.SpiderRequestCallback callback;
         public HTTPCookie Cookie;
+        public string PostData;
         public Dictionary<string, string> AdditionHeader;
         public static SpiderRequest Make(String Url,Spider.SpiderRequestCallback callback)
         {
@@ -49,6 +50,12 @@ namespace KLib.Spider
         public SpiderRequest AddCookie(HTTPCookie Cookie)
         {
             this.Cookie.AddCookie(Cookie);
+            return this;
+        }
+        public SpiderRequest AddPostData(string PostData)
+        {
+            this.PostData = PostData;
+            method = HTTPMethod.POST;
             return this;
         }
     }
@@ -123,7 +130,7 @@ namespace KLib.Spider
             {
                 return null;
             }
-            return response.MakeRequest(n.method, n.Url, n, HttpCallback,n.Cookie,n.AdditionHeader);
+            return response.MakeRequest(n.method, n.Url, n, HttpCallback,n.Cookie,n.AdditionHeader,n.PostData);
         }
         public static void Run()
         {
