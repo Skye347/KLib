@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using KLib.HTTP;
 using System.Collections.Concurrent;
 using System.Threading;
+using KLib.Spider.Middleware;
+using System.Linq;
 
 namespace KLib.Spider
 {
@@ -10,6 +12,40 @@ namespace KLib.Spider
     {
         public List<string> startList;
         abstract public SpiderRequest Start(SpiderResponse response);
+        public void AddRequest(SpiderRequest request)
+        {
+            Spider.AddRequest(request);
+        }
+        internal List<RequestMiddlewareBase> _RequestMiddleware = new List<RequestMiddlewareBase>
+        {
+            new ExampleRequestMiddleware()
+        };
+        internal List<ResponseMiddlewareBase> _ResponseMiddleware = new List<ResponseMiddlewareBase>
+        {
+            new ExampleResponseMiddleware()
+        };
+        public List<RequestMiddlewareBase> RequestMiddleware
+        {
+            get
+            {
+                return _RequestMiddleware;
+            }
+            set
+            {
+                _RequestMiddleware = _RequestMiddleware.Union(value).ToList();
+            }
+        }
+        public List<ResponseMiddlewareBase> ResponseMiddleware
+        {
+            get
+            {
+                return _ResponseMiddleware;
+            }
+            set
+            {
+                _ResponseMiddleware = _ResponseMiddleware.Union(value).ToList();
+            }
+        }
     }
 
     public class SpiderResponse
@@ -82,8 +118,36 @@ namespace KLib.Spider
             }
             return true;
         }
+        static SpiderRequest RunRequestMiddleware(List<RequestMiddlewareBase> middlewareList,SpiderRequest request)
+        {
+            foreach(var item in middlewareList)
+            {
+                request = item.Process(request);
+            }
+            return request;
+        }
+        static SpiderResponse RunResponseMiddleware(List<ResponseMiddlewareBase> middlewareList,SpiderResponse response)
+        {
+            foreach(var item in middlewareList)
+            {
+                response = item.Process(response);
+            }
+            return response;
+        }
         private static ConcurrentQueue<SpiderRequest> requestList = new ConcurrentQueue<SpiderRequest>();
         private static object waitLock = new object();
+        internal static void AddRequest(SpiderRequest request)
+        {
+            if (!isRunning)
+            {
+                return;
+            }
+            requestList.Enqueue(request);
+            lock (waitLock)
+            {
+                Monitor.Pulse(waitLock);
+            }
+        }
         private static SpiderRequest GetNext()
         {
             SpiderRequest next = null;
@@ -92,6 +156,7 @@ namespace KLib.Spider
                 requestList.TryDequeue(out next);
                 if (next != null)
                 {
+                    next = RunRequestMiddleware(currentSpider._RequestMiddleware, next);
                     break;
                 }
                 else
@@ -121,6 +186,7 @@ namespace KLib.Spider
         {
             SpiderRequest request = response.request.Addition as SpiderRequest;
             var sResponse = new SpiderResponse(request, response);
+            sResponse = RunResponseMiddleware(currentSpider._ResponseMiddleware, sResponse);
             var n = request.callback(sResponse);
             if (!isRunning)
             {
@@ -130,6 +196,7 @@ namespace KLib.Spider
             {
                 return null;
             }
+            n = RunRequestMiddleware(currentSpider._RequestMiddleware, n);
             return response.MakeRequest(n.method, n.Url, n, HttpCallback,n.Cookie,n.AdditionHeader,n.PostData);
         }
         public static void Run()
