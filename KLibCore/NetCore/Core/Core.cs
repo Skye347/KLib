@@ -94,7 +94,7 @@ namespace KLib.NetCore
         public object stateObject;
         private ProtocolOpBase protocol;
         public IPEndPoint ipEndPoint;
-        public int timeout=5000;
+        public int timeout=500;
         public long CompleteTime;
         private object TimeoutLock=new object();
         public Action<UniNetObject> IOCompletedMethod;
@@ -111,6 +111,10 @@ namespace KLib.NetCore
                 StartTimeoutAsync();
             }
         }
+        public void Close()
+        {
+            ObjectError = Error.NetCoreError.Disconnecting;
+        }
         public delegate void TimeoutCallback(UniNetObject uniObject);
         internal void StartTimeoutAsync()
         {
@@ -118,7 +122,7 @@ namespace KLib.NetCore
             //{
             //    FreeTimeout();
             //}
-            log("start timeout", INFO, "StartTimeoutAsync");
+            //log("start timeout", INFO, "StartTimeoutAsync");
             sw.Reset();
             sw.Start();
             timer = new Timer((object a)=> {
@@ -140,7 +144,7 @@ namespace KLib.NetCore
         {
             if (timer != null)
             {
-                log("stop timeout", INFO, "StartTimeoutAsync");
+                //log("stop timeout", INFO, "StartTimeoutAsync");
                 CompleteTime = sw.ElapsedMilliseconds;
                 timer.Dispose();
             }

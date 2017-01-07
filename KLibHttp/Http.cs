@@ -143,13 +143,13 @@ namespace KLib.HTTP
             }
             if (request.Scheme == "http")
             {
-                log("request http:" + request.Host, INFO, "HTTP.request");
+                //log("request http:" + request.Host, INFO, "HTTP.request");
                 ConnectedRequest = request;
                 currentCore.Connect(ipAddress.ToString(), 80);
             }
             else if(request.Scheme=="https")
             {
-                log("request https:" + request.Host, INFO, "HTTP.request");
+                //log("request https:" + request.Host, INFO, "HTTP.request");
                 ConnectedRequest = request;
                 sslProtocol.SetTargetHost(ipAddress, request.Host);
                 httpsCore.Connect(ipAddress.ToString(), 443);
@@ -179,17 +179,25 @@ namespace KLib.HTTP
         override public object Received(byte[] data, UniNetObject connection, out NetCore.Error.NetCoreException err, object Addition)
         {
             err = null;
-            log("id:" + (connection.stateObject as HTTPStateObject)?.request.id, INFO, "HTTP.Received");
+            //log("id:" + (connection.stateObject as HTTPStateObject)?.request.id, INFO, "HTTP.Received");
             if (connection.CompleteTime != 0)
             {
-                log("time:" + connection.CompleteTime, INFO, "HTTP.Received");
+                //log("time:" + connection.CompleteTime, INFO, "HTTP.Received");
             }
             var state = ProcessHTTPResponse(data, Addition as HTTPStateObject,out var nextRequest);
             if (nextRequest != null)
             {
                 (state as HTTPStateObject).request = nextRequest;
-                log("send:" + nextRequest.Host, INFO, "HTTP.Received");
+                //log("send:" + nextRequest.Host, INFO, "HTTP.Received");
                 connection.Write(nextRequest.ToByte(), out err);
+            }
+            else
+            {
+                if((state as HTTPStateObject).complete == HTTPStateComplete.Closing)
+                {
+                    connection.Close();
+                    err = new NetCore.Error.NetCoreException();
+                }
             }
             return state;
         }
@@ -281,6 +289,10 @@ namespace KLib.HTTP
                         if (state.Length == 0)
                         {
                             request = ProcessResponse(response, state);
+                            if (request == null)
+                            {
+                                state.complete = HTTPStateComplete.Closing;
+                            }
                             return state;
                         }
                         state.complete = HTTPStateComplete.isReadingByLength;
@@ -291,6 +303,10 @@ namespace KLib.HTTP
                     else
                     {
                         request = ProcessResponse(response, state);
+                        if (request == null)
+                        {
+                            state.complete = HTTPStateComplete.Closing;
+                        }
                         return state;
                     }
                 }
@@ -305,6 +321,10 @@ namespace KLib.HTTP
                         request=ProcessResponse(state.waitedResponse, state);
                         state.waitedResponse = null;
                         state.complete = HTTPStateComplete.Init;
+                        if (request == null)
+                        {
+                            state.complete = HTTPStateComplete.Closing;
+                        }
                         return state;
                     }
                     else
@@ -326,6 +346,10 @@ namespace KLib.HTTP
                         request=ProcessResponse(state.waitedResponse, state);
                         state.waitedResponse = null;
                         state.complete = HTTPStateComplete.Init;
+                        if (request == null)
+                        {
+                            state.complete = HTTPStateComplete.Closing;
+                        }
                         return state;
                     }
                     else
@@ -352,6 +376,10 @@ namespace KLib.HTTP
                 else
                 {
                     request = ProcessResponse(state.waitedResponse, state);
+                    if (request == null)
+                    {
+                        state.complete = HTTPStateComplete.Closing;
+                    }
                     return state;
                 }
                 //if (state.isChunking || state.isReadingByLength)
@@ -389,7 +417,8 @@ namespace KLib.HTTP
         isChunking,
         isReadingByLength,
         incompletedHeader,
-        Init
+        Init,
+        Closing
     }
 
     public class HTTPRequest

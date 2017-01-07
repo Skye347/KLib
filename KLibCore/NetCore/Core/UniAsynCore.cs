@@ -159,7 +159,15 @@ namespace KLib.NetCore
 
         private void ProcessBadConnection(UniNetObject uniObject)
         {
-            log("bad connection", ERROR, "ProcessBadConnection");
+            if (uniObject.ObjectError == Error.NetCoreError.Disconnecting)
+            {
+                uniObject.Dispose();
+                return;
+            }
+            else if (!(uniObject.ObjectError == Error.NetCoreError.IOPending))
+            {
+                log("bad connection", ERROR, "ProcessBadConnection");
+            }
             _Callback.Aborted(uniObject, uniObject.stateObject);
             //if (_ConnectPool == null)
             //{
