@@ -10,6 +10,10 @@ a cross-platform (using .net core) network library for creating client/server ea
 
 ### Changelog
 
+#### 2017-02-03
+1. init Spider Middleware
+2. impl Stop method
+
 #### 2017-01-06
 1. Add Timeout Detect
 2. HTTP Lib Bug fix
