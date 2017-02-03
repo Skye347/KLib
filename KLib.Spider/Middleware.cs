@@ -47,6 +47,22 @@ namespace KLib.Spider.Middleware
             return request;
         }
     }
+    public class RedirectMiddleware : ResponseMiddlewareBase
+    {
+        new string name = "RedirectMiddleware";
+        public override SpiderResponse Process(SpiderResponse response)
+        {
+            if (response.httpResponse.status["StatusCode"] == "302")
+            {
+                var request = response.request;
+                request.Url = response.httpResponse.header["Location"];
+                Console.WriteLine("302 to:" + request.Url);
+                Spider.AddRequest(request);
+                return null;
+            }
+            return response;
+        }
+    }
     public class ExampleResponseMiddleware : ResponseMiddlewareBase
     {
         new string name = "ExampleResponseMiddleware";
