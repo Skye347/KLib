@@ -111,8 +111,8 @@ namespace KLib.HTTP
         }
         private static KLib.NetCore.Protocol.ProtocolOpSsl sslProtocol;
         private static object newConnectLock = new object();
-        new private static Core currentCore;
-        private static Core httpsCore;
+        new private static Core currentCore=null;
+        private static Core httpsCore=null;
         public static void Init()
         {
             HTTPOp protocolInstance = new HTTPOp();
@@ -126,6 +126,11 @@ namespace KLib.HTTP
             httpsCore = new UniAsynCore();
             httpsCore.SetClient(httpsProtocol, false);
             httpsProtocol.BindCore(httpsCore);
+        }
+        new public static void StopCore()
+        {
+            currentCore?.Stop();
+            httpsCore?.Stop();
         }
         public static HTTPError Request(HTTPRequest request)
         {
@@ -143,13 +148,13 @@ namespace KLib.HTTP
             }
             if (request.Scheme == "http")
             {
-                //log("request http:" + request.Host, INFO, "HTTP.request");
+                log("request http:" + request.Host, INFO, "HTTP.request");
                 ConnectedRequest = request;
                 currentCore.Connect(ipAddress.ToString(), 80);
             }
             else if(request.Scheme=="https")
             {
-                //log("request https:" + request.Host, INFO, "HTTP.request");
+                log("request https:" + request.Host, INFO, "HTTP.request");
                 ConnectedRequest = request;
                 sslProtocol.SetTargetHost(ipAddress, request.Host);
                 httpsCore.Connect(ipAddress.ToString(), 443);
@@ -204,6 +209,10 @@ namespace KLib.HTTP
         public override void Aborted(UniNetObject connection, object Addition)
         {
             HTTPStateObject state = Addition as HTTPStateObject;
+            if (state == null)
+            {
+                return;
+            }
             if (state.request.Done == false)
             {
                 HTTPOp.Request(state.request);
@@ -396,6 +405,9 @@ namespace KLib.HTTP
                 log(e.Message, ERROR, "ProcessHTTPResponse");
                 log(data.Length.ToString(), ERROR, "ProcessHTTPResponse");
                 log(Encoding.UTF8.GetString(data), ERROR, "ProcessHTTPResponse");
+                state.waitedResponse.AddBody(data);
+                request = null;
+                return state;
                 //log(state.waitedResponse.body, ERROR, "ProcessHTTPResponse");
                 throw e;
                 //request = null;

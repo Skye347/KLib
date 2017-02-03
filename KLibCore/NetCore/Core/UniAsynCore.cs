@@ -22,6 +22,7 @@ namespace KLib.NetCore
         private UniNetObject _ServerUniObject;
         private CoreType _Type;
         private KLib.MemHper.Buffer _BufferManager;
+        private bool _isRunning = false;
         public override bool Connect(string ip, int port, bool GoAsync = true)
         {
             if (_SingleConnect && _ServerUniObject != null)
@@ -30,34 +31,18 @@ namespace KLib.NetCore
             }
             UniNetObject e = new UniNetObject();
             e.SetProtocol(_Callback._ProtocolOp);
-            //SocketAsyncEventArgs e = new SocketAsyncEventArgs();
-            //byte[] buf = new byte[4096];
-            //e.SetBuffer(buf, 0, 4096);
             e.SetCompletedHandler(ProcessIO);
             e.SetTimeoutHandler(ProcessTimeout);
-            //e.Completed += new EventHandler<SocketAsyncEventArgs>(ProcessIO);
             e.SetRemoteEndPoint(new IPEndPoint(IPAddress.Parse(ip), port));
             e.LastOperation = UniNetOperation.Connect;
             e.ConnectAsync();
             e.ObjectError = Error.NetCoreError.IOPending;
-            //if (!e.StartTimeout())
-            //{
-            //    e.ObjectError = Error.NetCoreError.TimedOut;
-            //    ProcessTimeout(e);
-            //}
-            //e.RemoteEndPoint = new IPEndPoint(IPAddress.Parse(ip), port);
-            //Socket tempServerSocket = new Socket(SocketType.Stream, ProtocolType.Tcp);
-            //e.UserToken = new SocketStateObject(tempServerSocket);
-            ////_ServerSocket = new Socket(SocketType.Stream, ProtocolType.Tcp);
-            //if (!tempServerSocket.ConnectAsync(e))
-            //{
-            //    ProcessConnected(e);
-            //}
             return true;
         }
 
         public override void Run()
         {
+            _isRunning = true;
             if (_Type == CoreType.Server)
             {
                 RunServer();
@@ -78,8 +63,25 @@ namespace KLib.NetCore
             //ProcessReceive(_ServerArgs);
         }
 
+        private void ProcessStop(UniNetObject uniObject=null)
+        {
+            if (uniObject == null)
+            {
+
+            }
+            else
+            {
+                uniObject.Dispose();
+            }
+        }
+
         private void StartAccept(UniNetObject uniObject)
         {
+            if (_isRunning != true)
+            {
+                ProcessStop(uniObject);
+                return;
+            }
             if (uniObject == null)
             {
                 uniObject = new UniNetObject();
@@ -139,6 +141,11 @@ namespace KLib.NetCore
         //[MethodImpl(MethodImplOptions.NoOptimization | MethodImplOptions.NoInlining)]
         private void ProcessConnected(UniNetObject uniObject)
         {
+            if (_isRunning != true)
+            {
+                ProcessStop(uniObject);
+                return;
+            }
             NetCore.Error.NetCoreException err;
             var state=_Callback.Connected(uniObject, out err);
             if (err != null)
@@ -187,6 +194,11 @@ namespace KLib.NetCore
                 ProcessBadConnection(uniObject);
                 return;
             }
+            if (_isRunning != true)
+            {
+                ProcessStop(uniObject);
+                return;
+            }
             //if (connectionArgs.BytesTransferred == 0)
             //{
             //    (connectionArgs.UserToken as SocketStateObject).socket.Shutdown(SocketShutdown.Both);
@@ -224,6 +236,11 @@ namespace KLib.NetCore
             if (uniObject.ObjectError != Error.NetCoreError.Success)
             {
                 ProcessBadConnection(uniObject);
+                return;
+            }
+            if (_isRunning != true)
+            {
+                ProcessStop(uniObject);
                 return;
             }
             if (uniObject.LastOperation == UniNetOperation.Accept)
@@ -295,7 +312,7 @@ namespace KLib.NetCore
 
         public override void Stop()
         {
-            throw new NotImplementedException();
+            _isRunning = false;
         }
     }
 }

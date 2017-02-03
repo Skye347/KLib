@@ -18,11 +18,11 @@ namespace KLib.Spider
         }
         internal List<RequestMiddlewareBase> _RequestMiddleware = new List<RequestMiddlewareBase>
         {
-            new ExampleRequestMiddleware()
+            //new ExampleRequestMiddleware()
         };
         internal List<ResponseMiddlewareBase> _ResponseMiddleware = new List<ResponseMiddlewareBase>
         {
-            new ExampleResponseMiddleware()
+            new RedirectMiddleware()
         };
         public List<RequestMiddlewareBase> RequestMiddleware
         {
@@ -131,6 +131,10 @@ namespace KLib.Spider
             foreach(var item in middlewareList)
             {
                 response = item.Process(response);
+                if (response == null)
+                {
+                    return null;
+                }
             }
             return response;
         }
@@ -187,17 +191,24 @@ namespace KLib.Spider
             SpiderRequest request = response.request.Addition as SpiderRequest;
             var sResponse = new SpiderResponse(request, response);
             sResponse = RunResponseMiddleware(currentSpider._ResponseMiddleware, sResponse);
-            var n = request.callback(sResponse);
-            if (!isRunning)
+            if (sResponse == null)
             {
                 return null;
             }
-            if (n == null)
+            else
             {
-                return null;
+                var n = request.callback(sResponse);
+                if (!isRunning)
+                {
+                    return null;
+                }
+                if (n == null)
+                {
+                    return null;
+                }
+                n = RunRequestMiddleware(currentSpider._RequestMiddleware, n);
+                return response.MakeRequest(n.method, n.Url, n, HttpCallback, n.Cookie, n.AdditionHeader, n.PostData);
             }
-            n = RunRequestMiddleware(currentSpider._RequestMiddleware, n);
-            return response.MakeRequest(n.method, n.Url, n, HttpCallback,n.Cookie,n.AdditionHeader,n.PostData);
         }
         public static void Run()
         {
@@ -220,6 +231,7 @@ namespace KLib.Spider
                     }
                 }
             }
+            HTTPOp.StopCore();
         }
     }
 }
