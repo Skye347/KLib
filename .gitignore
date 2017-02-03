@@ -5,3 +5,4 @@ project.lock.json
 packages/
 properties/
 *.txt
+*.nupkg
