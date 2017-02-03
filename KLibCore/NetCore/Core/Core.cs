@@ -51,11 +51,16 @@ namespace KLib.NetCore
     {
         public static IPAddress HostToIPAddress(string Host)
         {
+            if (DnsCache.ContainsKey(Host))
+            {
+                return DnsCache[Host];
+            }
             var task = System.Net.Dns.GetHostAddressesAsync(Host);
             try
             {
                 task.Wait();
                 IPAddress ipAddress = task.Result[0];
+                DnsCache.Add(Host, ipAddress);
                 return ipAddress;
             }
             catch
@@ -63,6 +68,8 @@ namespace KLib.NetCore
                 return null;
             }
         }
+
+        public static Dictionary<string, IPAddress> DnsCache = new Dictionary<string, IPAddress>();
     }
 
     public enum UniNetOperation
@@ -94,7 +101,7 @@ namespace KLib.NetCore
         public object stateObject;
         private ProtocolOpBase protocol;
         public IPEndPoint ipEndPoint;
-        public int timeout=500;
+        public int timeout=50000000;
         public long CompleteTime;
         private object TimeoutLock=new object();
         public Action<UniNetObject> IOCompletedMethod;
